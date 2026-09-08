@@ -12,6 +12,33 @@ export function parseMembers(text = "") {
     });
 }
 
+export function parseRosterTable(text = "") {
+  const groups = new Map();
+  String(text).split(/[\n\r]+/u).forEach((line) => {
+    const columns = line.split(/\t|,|，/u).map((value) => value.trim());
+    const groupName = columns[0];
+    const memberName = columns.slice(1).join(" ").trim();
+    if (!groupName || !memberName) return;
+    if (!groups.has(groupName)) groups.set(groupName, []);
+    groups.get(groupName).push(memberName);
+  });
+  return [...groups.entries()].map(([name, members]) => ({
+    name,
+    membersText: parseMembers(members.join("\n")).join("\n"),
+  }));
+}
+
+export function validateDrawCount(value, availableCount) {
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1) {
+    return { valid: false, count: null, message: "抽取数量必须是大于 0 的整数" };
+  }
+  if (count > availableCount) {
+    return { valid: false, count, message: `候选对象不足：最多可抽 ${availableCount} 个` };
+  }
+  return { valid: true, count, message: "" };
+}
+
 function membersFor(group) {
   return Array.isArray(group.members)
     ? parseMembers(group.members.join("\n"))

@@ -1,5 +1,23 @@
-const VERSION = 1;
-const EMPTY_STATE = Object.freeze({ groups: [] });
+const VERSION = 2;
+
+function emptyState() {
+  return {
+    groups: [],
+    inactivePeople: [],
+    settings: {
+      mode: "allPeople",
+      selectedGroupId: "",
+      count: 1,
+      allowRepeat: false,
+      orderTarget: "people",
+    },
+    round: {
+      excludedPeople: [],
+      excludedGroups: [],
+      history: [],
+    },
+  };
+}
 
 function isValidState(state) {
   return Boolean(
@@ -13,19 +31,36 @@ function isValidState(state) {
   );
 }
 
+function normalizeState(state) {
+  const defaults = emptyState();
+  return {
+    ...defaults,
+    ...state,
+    inactivePeople: Array.isArray(state.inactivePeople) ? state.inactivePeople : [],
+    settings: { ...defaults.settings, ...(state.settings ?? {}) },
+    round: {
+      ...defaults.round,
+      ...(state.round ?? {}),
+      excludedPeople: Array.isArray(state.round?.excludedPeople) ? state.round.excludedPeople : [],
+      excludedGroups: Array.isArray(state.round?.excludedGroups) ? state.round.excludedGroups : [],
+      history: Array.isArray(state.round?.history) ? state.round.history : [],
+    },
+  };
+}
+
 export function createStorage(adapter, key = "team-lottery-state") {
   return {
     load() {
       try {
         const raw = adapter.getItem(key);
-        if (!raw) return { ...EMPTY_STATE };
+        if (!raw) return emptyState();
         const payload = JSON.parse(raw);
-        if (payload.version !== VERSION || !isValidState(payload.state)) {
-          return { ...EMPTY_STATE };
+        if (![1, VERSION].includes(payload.version) || !isValidState(payload.state)) {
+          return emptyState();
         }
-        return payload.state;
+        return normalizeState(payload.state);
       } catch {
-        return { ...EMPTY_STATE };
+        return emptyState();
       }
     },
 

@@ -5,6 +5,8 @@ import {
   buildCandidatePool,
   drawItems,
   parseMembers,
+  parseRosterTable,
+  validateDrawCount,
 } from "../src/domain.js";
 
 const groups = [
@@ -48,4 +50,17 @@ test("drawItems rejects impossible counts", () => {
   const items = buildCandidatePool(groups, "groups");
   assert.throws(() => drawItems(items, 3, new Set(), () => 0), /候选对象不足/);
   assert.throws(() => drawItems(items, 0, new Set(), () => 0), /至少抽取 1 个/);
+});
+
+test("parseRosterTable reads two-column spreadsheet rows and merges groups", () => {
+  assert.deepEqual(parseRosterTable("产品组\t张三\n产品组\t李四\n研发组,王五\n研发组，赵六\n无效行"), [
+    { name: "产品组", membersText: "张三\n李四" },
+    { name: "研发组", membersText: "王五\n赵六" },
+  ]);
+});
+
+test("validateDrawCount rejects decimals and out-of-range values without changing them", () => {
+  assert.deepEqual(validateDrawCount("2", 3), { valid: true, count: 2, message: "" });
+  assert.equal(validateDrawCount("1.5", 3).valid, false);
+  assert.equal(validateDrawCount("4", 3).message, "候选对象不足：最多可抽 3 个");
 });

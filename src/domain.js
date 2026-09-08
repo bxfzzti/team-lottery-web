@@ -12,13 +12,47 @@ export function parseMembers(text = "") {
     });
 }
 
+function parseCsvRow(line) {
+  const columns = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if ((character === "," || character === "，") && !quoted) {
+      columns.push(value.trim());
+      value = "";
+    } else {
+      value += character;
+    }
+  }
+  columns.push(value.trim());
+  return columns;
+}
+
+function parseTableRow(line) {
+  const columns = line.includes("\t") ? line.split("\t") : parseCsvRow(line);
+  return columns.map((value) => value.replace(/^\ufeff/u, "").trim());
+}
+
 export function parseRosterTable(text = "") {
   const groups = new Map();
+  const groupHeaders = new Set(["小组", "组别", "分组", "部门", "团队"]);
+  const memberHeaders = new Set(["姓名", "成员", "员工", "人员"]);
+  let currentGroup = "";
   String(text).split(/[\n\r]+/u).forEach((line) => {
-    const columns = line.split(/\t|,|，/u).map((value) => value.trim());
-    const groupName = columns[0];
-    const memberName = columns.slice(1).join(" ").trim();
+    const columns = parseTableRow(line);
+    if (groupHeaders.has(columns[0]) && memberHeaders.has(columns[1])) return;
+    const groupName = columns[0] || currentGroup;
+    const memberName = columns[1] || "";
     if (!groupName || !memberName) return;
+    currentGroup = groupName;
     if (!groups.has(groupName)) groups.set(groupName, []);
     groups.get(groupName).push(memberName);
   });

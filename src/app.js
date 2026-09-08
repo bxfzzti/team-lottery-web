@@ -1,7 +1,7 @@
 import {
   buildCandidatePool, drawItems, parseMembers, parseRosterTable, secureRandomIndex, validateDrawCount,
-} from "./domain.js";
-import { createStorage } from "./storage.js";
+} from "./domain.js?v=2";
+import { createStorage } from "./storage.js?v=2";
 
 const storage = createStorage(window.localStorage);
 const elements = {

@@ -100,13 +100,13 @@
       <form method="dialog">
         <p class="dialog-kicker">批量导入</p>
         <h2>粘贴小组和姓名</h2>
-        <p>从 Excel 或表格复制两列内容：第一列是小组，第二列是姓名。导入内容会合并到现有同名小组。</p>
+        <p>从 Excel 或表格复制两列内容：第一列是小组，第二列是姓名。可以带表头；空白组名会沿用上一行，导入内容会合并到现有同名小组。</p>
         <textarea id="import-text" class="import-text" placeholder="产品组&#9;张三&#10;产品组&#9;李四&#10;研发组&#9;王五"></textarea>
         <p class="dialog-error" id="import-error" aria-live="polite"></p>
         <div class="dialog-actions"><button class="button button-plain" value="cancel">取消</button><button class="button button-danger" id="confirm-import" value="confirm">导入名单</button></div>
       </form>
     </dialog>
 
-    <script type="module" src="src/app.js?v=4"></script>
+    <script type="module" src="src/app.js?v=5"></script>
   </body>
 </html>

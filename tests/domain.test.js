@@ -59,6 +59,14 @@ test("parseRosterTable reads two-column spreadsheet rows and merges groups", () 
   ]);
 });
 
+test("parseRosterTable handles headers, merged Excel group cells, BOM, and quoted CSV", () => {
+  const pasted = "\ufeff小组\t姓名\n产品组\t张三\n\t李四\n\"研发组\",\"王五\"\n\"研发组\",\"赵六\"";
+  assert.deepEqual(parseRosterTable(pasted), [
+    { name: "产品组", membersText: "张三\n李四" },
+    { name: "研发组", membersText: "王五\n赵六" },
+  ]);
+});
+
 test("validateDrawCount rejects decimals and out-of-range values without changing them", () => {
   assert.deepEqual(validateDrawCount("2", 3), { valid: true, count: 2, message: "" });
   assert.equal(validateDrawCount("1.5", 3).valid, false);

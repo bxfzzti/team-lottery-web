@@ -20,3 +20,11 @@ dialog{border:1px solid var(--ink);padding:0;width:min(390px,calc(100% - 40px));
 body.is-presenting{overflow:hidden;background:var(--forest)}body.is-presenting .shell{width:100%;padding:0}body.is-presenting .masthead,body.is-presenting .intro,body.is-presenting .roster,body.is-presenting .draw-panel,body.is-presenting .history{display:none}body.is-presenting .workbench,body.is-presenting .draw-zone{display:block}body.is-presenting .result-stage{position:fixed;inset:0;border:0;min-height:100vh;padding:8vw}.is-presenting .result-content{font-size:clamp(58px,9vw,140px)}.is-presenting .order-list{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));font-size:clamp(20px,2.4vw,34px)}.is-presenting .result-tools{top:24px;right:28px}.is-presenting #presentation-mode::after{content:"退出"}.is-presenting #presentation-mode{font-size:0}.is-presenting #presentation-mode::after{font-size:12px}
 @media (max-width:560px){.mode-option-wide{grid-column:auto}.result-tools{right:11px;top:10px}.result-label{top:52px}.order-list{grid-template-columns:1fr 1fr}.member-toggle-list{max-height:92px;overflow:auto}}
 .switch-row.is-hidden{display:none}
+#import-preview,.dialog-error{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 sans-serif}
+#import-preview{max-height:240px;overflow:auto}.dialog-actions{flex-wrap:wrap}button:disabled{cursor:not-allowed;opacity:.5}
+#presentation-draw{display:none}.is-presenting #presentation-draw{display:inline-block}
+body.is-presenting .result-stage{overflow:auto;justify-content:flex-start;padding:100px 6vw 48px;min-height:0}
+body.is-presenting .result-tools{position:fixed;background:var(--forest);padding:8px;top:12px;right:12px}
+.result-stage{padding-top:76px;overflow-wrap:anywhere}.history-result{min-width:0;overflow-wrap:anywhere}.history-list{max-height:420px;overflow:auto}
+.is-presenting .order-list{grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))}
+body .workbench.is-busy{opacity:1}.is-presenting .result-content{flex-shrink:0}

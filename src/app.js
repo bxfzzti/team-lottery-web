@@ -1,9 +1,9 @@
 import {
-  buildCandidatePool, drawItems, parseMembers, parseRosterTable, secureRandomIndex, validateDrawCount,
-} from "./domain.js?v=2";
+  buildCandidatePool, drawItems, parseMembers, memberEntryCount, inspectRosterTable, encodeMembers, secureRandomIndex, validateDrawCount,
+} from "./domain.js?v=3";
 import { createStorage } from "./storage.js?v=2";
 
-const storage = createStorage(window.localStorage);
+const storage = createStorage({ getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value), removeItem: key => window.localStorage.removeItem(key) });
 const elements = {
   workbench: document.querySelector(".workbench"),
   groupList: document.querySelector("#group-list"), rosterCount: document.querySelector("#roster-count"),
@@ -34,6 +34,11 @@ const round = {
   busy: false,
 };
 let notice = "";
+let importPreview = null;
+const previewButton = document.querySelector('#preview-import');
+const previewRegion = document.querySelector('#import-preview');
+const presentationDraw = document.querySelector('#presentation-draw');
+let saveFailed = false;
 let latestResultText = round.history[0]?.result?.replaceAll("；", "\n") ?? "";
 
 function makeGroup(name = "", membersText = "") {
@@ -67,6 +72,7 @@ function serializeState() {
 
 function persist() {
   const saved = storage.save(serializeState());
+  saveFailed = !saved;
   if (!saved) {
     elements.availability.textContent = "浏览器无法保存名单，请不要刷新页面";
     elements.availability.classList.add("is-error", "save-error");
@@ -81,7 +87,7 @@ function activeMemberCount(group) {
   return parseMembers(group.membersText).filter((name) => !state.inactivePeople.includes(memberId(group.id, name))).length;
 }
 function rawMemberCount(group) {
-  return String(group.membersText).split(/[\n\r,，、;；]+/u).map((name) => name.trim()).filter(Boolean).length;
+  return memberEntryCount(group.membersText);
 }
 
 function memberToggleMarkup(group) {
@@ -112,6 +118,9 @@ function updateCardMeta(card, group) {
   const duplicates = rawMemberCount(group) - members;
   card.querySelector(".member-count").textContent = `${members} 名成员${inactive ? ` · ${inactive} 人暂停` : ""}`;
   card.querySelector(".duplicate-note").textContent = duplicates ? `已合并 ${duplicates} 个重复姓名` : "输入完成后可暂停成员";
+  const previous = card.querySelector('.member-toggle-list');
+  if (previous) previous.remove();
+  card.insertAdjacentHTML('beforeend', memberToggleMarkup(group));
 }
 
 function renderRosterCount() {
@@ -164,15 +173,18 @@ function refreshControls() {
   let message;
   if (notice) message = notice;
   else if (mode === "groupThenPerson" && available.length) message = `每个小组机会相同；当前 ${available.length} 个小组有成员可抽`;
-  else if (mode === "fullOrder" && available.length) message = `将随机生成 ${available.length} 个${elements.orderTarget.value === "groups" ? "小组" : "员工"}的完整顺序`;
+  else if (mode === "fullOrder" && available.length) message = `独立排序：为全部 ${available.length} 个有效对象排序，不改变本轮已抽记录`;
   else if (available.length) message = `当前有 ${available.length} 个有效候选${elements.repeat.checked ? "；已开启重复抽取" : "；本轮不重复"}`;
-  else message = "请先录入有效的成员或小组名单";
+  else message = personPool().length ? "当前范围已抽完或没有可抽对象；可重置本轮或切换范围" : "请录入成员或恢复暂停成员后再抽签";
   const countInvalid = available.length > 0 && !["groupThenPerson", "fullOrder"].includes(mode) && !validation.valid;
   if (countInvalid) message = validation.message;
   elements.availability.textContent = message;
   elements.availability.classList.toggle("is-error", available.length === 0 || countInvalid);
   elements.availability.classList.toggle("round-notice", Boolean(notice));
   elements.drawButton.disabled = round.busy || available.length === 0 || countInvalid;
+  presentationDraw.disabled = elements.drawButton.disabled;
+  presentationDraw.textContent = mode === 'fullOrder' ? '重新排序' : '继续抽签';
+  if (saveFailed) elements.availability.textContent = '保存失败：请导出名单备份，刷新会丢失未保存进度';
   elements.drawButton.innerHTML = mode === "fullOrder" ? '<span class="spark">✦</span> 生成完整顺序 <span class="arrow">→</span>' : '<span class="spark">✦</span> 开始抽签 <span class="arrow">→</span>';
 }
 
@@ -182,7 +194,7 @@ function renderHistory() {
     elements.historyList.innerHTML = '<li class="history-empty">还没有抽签记录</li>';
     return;
   }
-  elements.historyList.innerHTML = round.history.slice(0, 8).map((entry) => `<li class="history-item"><span class="history-mode">${escapeHtml(entry.mode)}</span><span class="history-result">${escapeHtml(entry.result)}</span><time class="history-time">${escapeHtml(entry.time)}</time></li>`).join("");
+  elements.historyList.innerHTML = round.history.map((entry) => `<li class="history-item"><span class="history-mode">${escapeHtml(entry.mode)}</span><span class="history-result">${escapeHtml(entry.result)}</span><time class="history-time">${escapeHtml(entry.time)}</time></li>`).join("");
 }
 
 function showPlaceholder(message = "名单准备好后<br />点击开始抽签") {
@@ -196,7 +208,9 @@ function restoreLatestResult() {
   if (!latest) return showPlaceholder();
   elements.resultStage.classList.add("is-revealed");
   elements.resultLabel.textContent = "最近一次结果";
-  if (latest.mode === "完整顺序") {
+  if (Array.isArray(latest.results)) {
+    elements.resultContent.innerHTML = resultMarkup(latest.results, latest);
+  } else if (latest.mode === "完整顺序") {
     const items = latest.result.split("；");
     elements.resultContent.innerHTML = `<div class="order-list">${items.map((item, index) => `<div class="order-item"><b>${index + 1}</b><span>${escapeHtml(item.replace(/^\d+\.\s*/u, ""))}</span></div>`).join("")}</div>`;
   } else {
@@ -212,10 +226,7 @@ function resetRound(message = "本轮已重置，所有对象重新参与") {
   showPlaceholder("本轮已重置<br />所有对象重新参与"); persist(); refreshControls();
 }
 function rosterChanged(card, group) {
-  if (round.history.length) {
-    clearRoundData(); notice = "名单已修改，已自动开始新一轮"; renderHistory();
-    showPlaceholder("名单已经更新<br />请开始新一轮抽签");
-  }
+  if (round.history.length) notice = "名单已更新，本轮历史和已抽记录保留；新成员可参与";
   const validIds = new Set(buildCandidatePool(state.groups, "allPeople").map((person) => person.id));
   state.inactivePeople = state.inactivePeople.filter((id) => validIds.has(id));
   if (card && group) updateCardMeta(card, group);
@@ -231,7 +242,7 @@ function resultMarkup(results, { isTwoStep = false, isOrder = false } = {}) {
 function resultText(results, isTwoStep, isOrder) {
   if (isOrder) return results.map((item, index) => `${index + 1}. ${item.name}${item.type === "person" ? `（${item.groupName}）` : ""}`).join("\n");
   if (isTwoStep) return `${results[0].name} → ${results[1].name}`;
-  return results.map((item) => item.name).join("、");
+  return results.map((item) => item.type === 'person' ? `${item.name}（${item.groupName}）` : item.name).join("、");
 }
 function setBusy(busy) {
   round.busy = busy;
@@ -245,14 +256,14 @@ function completeDraw(payload) {
   elements.resultLabel.textContent = isOrder ? "随机顺序" : isTwoStep ? "抽签结果 / 小组 → 成员" : "抽签结果";
   elements.resultContent.innerHTML = resultMarkup(results, { isTwoStep, isOrder });
   elements.resultSubtitle.textContent = isOrder ? `已生成 ${results.length} 个对象的完整顺序` : allowRepeat ? "本次为允许重复抽取" : "已抽中对象将在本轮中自动避开";
-  if (!allowRepeat && !isOrder) {
+  if (!isOrder) {
     results.forEach((result) => {
       if (result.type === "group" && !isTwoStep) round.excludedGroups.add(result.id);
       if (result.type === "person") round.excludedPeople.add(result.id);
     });
   }
   latestResultText = resultText(results, isTwoStep, isOrder);
-  round.history.unshift({ mode: modeName(mode), result: latestResultText.replaceAll("\n", "；"), time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date()) });
+  round.history.unshift({ mode: modeName(mode), results, isTwoStep, isOrder, allowRepeat, result: latestResultText.replaceAll("\n", "；"), time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date()) });
   notice = ""; renderHistory(); setBusy(false); persist(); refreshControls();
 }
 
@@ -264,7 +275,15 @@ function animateAndReveal(payload, previewPool) {
   preview();
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return completeDraw(payload);
   const interval = window.setInterval(preview, 75);
-  window.setTimeout(() => { window.clearInterval(interval); completeDraw(payload); }, 1100);
+  window.setTimeout(() => {
+    window.clearInterval(interval);
+    if (payload.isTwoStep) {
+      elements.resultLabel.textContent = '第一步：已抽中小组';
+      elements.resultContent.innerHTML = resultMarkup([payload.results[0]], { isTwoStep: true });
+      elements.resultSubtitle.textContent = '即将揭晓组内成员';
+      window.setTimeout(() => completeDraw(payload), 1000);
+    } else completeDraw(payload);
+  }, 1100);
 }
 
 function startDraw() {
@@ -298,7 +317,7 @@ function mergeImportedGroups(imported) {
       const blank = state.groups.find((item) => !item.name.trim() && memberCount(item) === 0);
       group = blank ?? makeGroup(); if (!blank) state.groups.push(group); group.name = incoming.name;
     }
-    group.membersText = parseMembers(`${group.membersText}\n${incoming.membersText}`).join("\n");
+    group.membersText = encodeMembers([...parseMembers(group.membersText), ...parseMembers(incoming.membersText)]);
   });
 }
 function exportCsv() {
@@ -329,7 +348,6 @@ elements.groupList.addEventListener("input", (event) => {
   if (!group || !target.dataset.field) return;
   group[target.dataset.field] = target.value; rosterChanged(card, group);
 });
-elements.groupList.addEventListener("change", (event) => { if (event.target instanceof HTMLTextAreaElement) renderGroupList(); });
 elements.groupList.addEventListener("click", (event) => {
   const memberButton = event.target.closest(".member-toggle");
   if (memberButton) {
@@ -352,15 +370,26 @@ elements.repeat.addEventListener("change", () => { notice = ""; refreshControls(
 elements.drawButton.addEventListener("click", startDraw); elements.resetRound.addEventListener("click", () => resetRound());
 elements.openClear.addEventListener("click", () => elements.clearDialog.showModal());
 elements.confirmClear.addEventListener("click", () => {
-  state.groups = [makeGroup(), makeGroup()]; state.inactivePeople = []; clearRoundData(); renderGroupList(); renderRosterCount();
+  state.groups = [makeGroup(), makeGroup()]; state.inactivePeople = []; clearRoundData(); notice = ''; renderHistory(); renderGroupList(); renderRosterCount();
   showPlaceholder("名单已清空<br />重新录入后即可抽签"); persist(); refreshControls();
 });
-elements.openImport.addEventListener("click", () => { elements.importError.textContent = ""; elements.importDialog.showModal(); elements.importText.focus(); });
-elements.confirmImport.addEventListener("click", (event) => {
-  event.preventDefault(); const imported = parseRosterTable(elements.importText.value);
-  if (imported.length === 0) { elements.importError.textContent = "没有识别到两列名单，请检查小组和姓名是否分成两列"; return; }
-  mergeImportedGroups(imported); elements.importText.value = ""; elements.importDialog.close(); rosterChanged(); renderGroupList();
+function invalidatePreview() { importPreview = null; previewRegion.replaceChildren(); elements.confirmImport.disabled = true; elements.importError.textContent = ''; }
+elements.importText.addEventListener('input', invalidatePreview);
+elements.openImport.addEventListener("click", () => { invalidatePreview(); elements.importDialog.showModal(); elements.importText.focus(); });
+previewButton.addEventListener('click', () => {
+  importPreview = inspectRosterTable(elements.importText.value);
+  const { groups, errors, warnings } = importPreview;
+  const total = groups.reduce((sum, group) => sum + parseMembers(group.membersText).length, 0);
+  previewRegion.textContent = `${groups.length} 个小组，${total} 名成员（同名小组合并，本轮进度保留）\n` + groups.map(group => `${group.name}：${parseMembers(group.membersText).join('、')}`).join('\n') + '\n' + warnings.join('\n');
+  elements.importError.textContent = errors.join('\n') || (total ? '' : '未识别到名单，请提供小组和姓名两列');
+  elements.confirmImport.disabled = Boolean(errors.length) || !total;
 });
+elements.confirmImport.addEventListener("click", (event) => {
+  event.preventDefault();
+  if (!importPreview || importPreview.errors.length || !importPreview.groups.length) return;
+  mergeImportedGroups(importPreview.groups); elements.importText.value = ""; elements.importDialog.close(); rosterChanged(); renderGroupList(); invalidatePreview();
+});
+presentationDraw.addEventListener('click', startDraw);
 elements.exportRoster.addEventListener("click", exportCsv); elements.copyResult.addEventListener("click", copyLatestResult);
 elements.presentationMode.addEventListener("click", () => document.body.classList.toggle("is-presenting"));
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") document.body.classList.remove("is-presenting"); });

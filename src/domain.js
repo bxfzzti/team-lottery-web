@@ -1,65 +1,71 @@
-const MEMBER_SEPARATOR = /[\n\r,，、;；]+/u;
-
 export function parseMembers(text = "") {
-  const seen = new Set();
-  return String(text)
-    .split(MEMBER_SEPARATOR)
-    .map((name) => name.trim())
-    .filter((name) => {
-      if (!name || seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    });
+  return [...new Set(readCells(String(text), /[\n\r,，、;；]/u).rows.flatMap(row => row.cells).map(name => name.trim()).filter(Boolean))];
 }
 
-function parseCsvRow(line) {
-  const columns = [];
-  let value = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"') {
-      if (quoted && line[index + 1] === '"') {
-        value += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if ((character === "," || character === "，") && !quoted) {
-      columns.push(value.trim());
-      value = "";
-    } else {
-      value += character;
+export function memberEntryCount(text = "") {
+  return readCells(String(text), /[\n\r,，、;；]/u).rows.flatMap(row => row.cells).filter(name => name.trim()).length;
+}
+
+export function encodeMembers(names) {
+  return [...new Set(names)].map(name => /[\n\r,，、;；"]/u.test(name) ? `"${name.replaceAll('"', '""')}"` : name).join("\n");
+}
+
+function readCells(text, separator) {
+  const rows = [];
+  let cells = [], value = "", quoted = false, line = 1, start = 1;
+  const pushCell = () => { cells.push(value.trim()); value = ""; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' && (quoted || !value.trim())) {
+      if (quoted && text[i + 1] === '"') { value += '"'; i++; }
+      else quoted = !quoted;
+    } else if (!quoted && (c === '\n' || c === '\r')) {
+      pushCell(); rows.push({ cells, line: start }); cells = [];
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      line++; start = line;
+    } else if (!quoted && separator.test(c)) pushCell();
+    else { value += c; if (c === '\n') line++; }
+  }
+  pushCell(); rows.push({ cells, line: start });
+  return { rows, unclosed: quoted };
+}
+
+export function inspectRosterTable(text = "") {
+  text = String(text).replace(/^\ufeff/u, "");
+  const parsed = readCells(text, /[\t,，]/u);
+  const groups = new Map(), errors = [], warnings = [];
+  if (parsed.unclosed) errors.push("引号未闭合，请检查名单格式");
+  const groupHeaders = new Set(["小组", "小组名称", "组名", "组别", "分组", "部门", "部门名称", "团队"]);
+  const memberHeaders = new Set(["姓名", "成员", "员工", "人员", "员工姓名", "成员姓名"]);
+  let groupColumn = 0, memberColumn = 1, currentGroup = "", first = true;
+  for (const row of parsed.rows) {
+    const columns = row.cells;
+    if (columns.every(value => !value)) continue;
+    if (columns.length !== 2) { errors.push(`第 ${row.line} 行应为两列，实际 ${columns.length} 列`); continue; }
+    if (first) {
+      first = false;
+      const g = columns.findIndex(value => groupHeaders.has(value));
+      const m = columns.findIndex(value => memberHeaders.has(value));
+      if (g >= 0 && m >= 0 && g !== m) { groupColumn = g; memberColumn = m; continue; }
+    }
+    if (columns[groupColumn]) currentGroup = columns[groupColumn];
+    const name = columns[memberColumn];
+    if (!name) { warnings.push(`第 ${row.line} 行未填写姓名，仅更新小组`); continue; }
+    if (!currentGroup) { errors.push(`第 ${row.line} 行缺少小组名称`); continue; }
+    if (!groups.has(currentGroup)) groups.set(currentGroup, []);
+    const members = groups.get(currentGroup);
+    const names = name.split(/\r?\n/u).map(value => value.trim()).filter(Boolean);
+    if (names.length > 1) warnings.push(`第 ${row.line} 行单元格换行拆为 ${names.length} 名成员`);
+    for (const member of names) {
+      if (members.includes(member)) warnings.push(`第 ${row.line} 行重复成员“${member}”已合并`);
+      else members.push(member);
     }
   }
-  columns.push(value.trim());
-  return columns;
-}
-
-function parseTableRow(line) {
-  const columns = line.includes("\t") ? line.split("\t") : parseCsvRow(line);
-  return columns.map((value) => value.replace(/^\ufeff/u, "").trim());
+  return { groups: [...groups].map(([name, members]) => ({ name, membersText: encodeMembers(members) })), errors, warnings };
 }
 
 export function parseRosterTable(text = "") {
-  const groups = new Map();
-  const groupHeaders = new Set(["小组", "组别", "分组", "部门", "团队"]);
-  const memberHeaders = new Set(["姓名", "成员", "员工", "人员"]);
-  let currentGroup = "";
-  String(text).split(/[\n\r]+/u).forEach((line) => {
-    const columns = parseTableRow(line);
-    if (groupHeaders.has(columns[0]) && memberHeaders.has(columns[1])) return;
-    const groupName = columns[0] || currentGroup;
-    const memberName = columns[1] || "";
-    if (!groupName || !memberName) return;
-    currentGroup = groupName;
-    if (!groups.has(groupName)) groups.set(groupName, []);
-    groups.get(groupName).push(memberName);
-  });
-  return [...groups.entries()].map(([name, members]) => ({
-    name,
-    membersText: parseMembers(members.join("\n")).join("\n"),
-  }));
+  return inspectRosterTable(text).groups;
 }
 
 export function validateDrawCount(value, availableCount) {
@@ -75,7 +81,7 @@ export function validateDrawCount(value, availableCount) {
 
 function membersFor(group) {
   return Array.isArray(group.members)
-    ? parseMembers(group.members.join("\n"))
+    ? [...new Set(group.members.map(name => String(name).trim()).filter(Boolean))]
     : parseMembers(group.membersText);
 }
 

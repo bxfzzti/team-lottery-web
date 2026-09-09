@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f3efe5" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 fill=%22%231e211f%22/><text x=%2232%22 y=%2245%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f0e6%22>签</text></svg>" />
     <title>团队抽签｜公平地决定下一位</title>
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <main class="shell">
@@ -72,7 +72,7 @@
           </div>
 
           <section class="result-stage" id="result-stage" aria-live="polite" aria-atomic="true">
-            <div class="result-tools"><button id="copy-result" type="button">复制结果</button><button id="presentation-mode" type="button">投屏显示</button></div>
+            <div class="result-tools"><button id="presentation-draw" type="button">继续抽签</button><button id="copy-result" type="button">复制结果</button><button id="presentation-mode" type="button">投屏显示</button></div>
             <div class="result-decoration">公平<br />随机</div>
             <p class="result-label" id="result-label">等待开始</p>
             <div class="result-content" id="result-content"><span class="result-placeholder">名单准备好后<br />点击开始抽签</span></div>
@@ -103,10 +103,11 @@
         <p>从 Excel 或表格复制两列内容：第一列是小组，第二列是姓名。可以带表头；空白组名会沿用上一行，导入内容会合并到现有同名小组。</p>
         <textarea id="import-text" class="import-text" placeholder="产品组&#9;张三&#10;产品组&#9;李四&#10;研发组&#9;王五"></textarea>
         <p class="dialog-error" id="import-error" aria-live="polite"></p>
-        <div class="dialog-actions"><button class="button button-plain" value="cancel">取消</button><button class="button button-danger" id="confirm-import" value="confirm">导入名单</button></div>
+        <div id="import-preview" aria-live="polite"></div>
+        <div class="dialog-actions"><button class="button button-plain" value="cancel">取消</button><button class="button" id="preview-import" type="button">预览识别</button><button class="button button-danger" id="confirm-import" value="confirm" disabled>确认导入</button></div>
       </form>
     </dialog>
 
-    <script type="module" src="src/app.js?v=5"></script>
+    <script type="module" src="src/app.js?v=6"></script>
   </body>
 </html>

@@ -6,6 +6,8 @@ import {
   drawItems,
   parseMembers,
   parseRosterTable,
+  inspectRosterTable,
+  encodeMembers,
   validateDrawCount,
 } from "../src/domain.js";
 
@@ -71,4 +73,25 @@ test("validateDrawCount rejects decimals and out-of-range values without changin
   assert.deepEqual(validateDrawCount("2", 3), { valid: true, count: 2, message: "" });
   assert.equal(validateDrawCount("1.5", 3).valid, false);
   assert.equal(validateDrawCount("4", 3).message, "候选对象不足：最多可抽 3 个");
+});
+
+test('blank name updates group for following merged cells', () => {
+  assert.deepEqual(parseRosterTable('A组\t甲\nB组\t\n\t乙'), [{name:'A组',membersText:'甲'}, {name:'B组',membersText:'乙'}]);
+});
+test('reversed and expanded headers map correctly', () => {
+  assert.deepEqual(parseRosterTable('员工姓名\t小组名称\n张三\t产品组'), [{name:'产品组',membersText:'张三'}]);
+});
+test('extra columns and malformed quotes produce actionable errors', () => {
+  assert.match(inspectRosterTable('A组\t甲\t乙').errors[0], /第 1 行/);
+  assert.match(inspectRosterTable('A组,"甲').errors[0], /引号未闭合/);
+});
+test('quoted multiline cells preserve all members', () => {
+  assert.deepEqual(parseRosterTable('"A组","甲\n乙"'), [{name:'A组',membersText:'甲\n乙'}]);
+});
+test('comma names survive import, editor serialization and candidate creation', () => {
+  const groups = parseRosterTable('"A组","Smith, John"');
+  const names = parseMembers(groups[0].membersText);
+  assert.deepEqual(names, ['Smith, John']);
+  assert.deepEqual(parseMembers(encodeMembers(names)), names);
+  assert.equal(buildCandidatePool([{id:'a',...groups[0]}], 'allPeople').length, 1);
 });
